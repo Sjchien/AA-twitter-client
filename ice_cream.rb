@@ -7,7 +7,7 @@
 require 'rest-client'
 require 'json'
 require 'addressable/uri'
-
+require 'nokogiri'
 
 def everything
 
@@ -16,14 +16,38 @@ def everything
   show_nearby(shops)
   chosen_shop = shops[shop_select]
   shop_lat_long = parse_lat_long_from_shop(chosen_shop)
-  get_directions(user_lat_long, shop_lat_long)
-
-
-  #directions
+  directions_hash = get_directions(user_lat_long, shop_lat_long)
+  directions = parse_directions(directions_hash)
+  show_directions(directions)
+  #
   #http://maps.googleapis.com/maps/api/directions/json?origin=Toronto&destination=Montreal&sensor=false&mode=walking
 
 end
 
+def parse_directions(directions_hash)
+  start_addy = directions_hash["routes"][0]["legs"][0]["start_address"]
+  end_addy = directions_hash["routes"][0]["legs"][0]["end_address"]
+  directions = []
+  directions_hash["routes"][0]["legs"][0]["steps"].each do |step|
+    # doc = Nokogiri::HTML(step["html_instructions"])
+    # (doc.at_css "div").content = " #{(doc.at_css "div").content}"
+    # text_instruction = doc.text
+    directions <<  {
+      :instructions => step["html_instructions"].gsub(/<\/?[^>]+>/,' '),
+      :distance => step["distance"]["text"] }
+  end
+  [start_addy, directions, end_addy]
+end
+
+def show_directions(directions_array)
+  start_addy, directions, end_addy = directions_array
+  puts "\n\nStart address: #{start_addy}"
+  directions.each_with_index do |step, i|
+    puts "Step #{i+1}: #{step[:instructions]}"
+    puts "      Distance: #{step[:distance]}"
+  end
+  puts "End address: #{end_addy}\n\n"
+end
 
 def get_directions(user_lat_long, shop_lat_long)
   from = user_lat_long.join(',')
@@ -39,6 +63,7 @@ def get_directions(user_lat_long, shop_lat_long)
                         :mode => "walking" }
   )
   response = RestClient.get(a.to_s)
+  JSON.parse(response)
 end
 
 
@@ -105,5 +130,6 @@ def shop_select
   shop_number = gets.chomp.to_i - 1
 end
 
-a = everything
+everything
+
 
