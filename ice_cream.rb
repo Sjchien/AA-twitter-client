@@ -28,6 +28,7 @@ def parse_directions(directions_hash)
   start_addy = directions_hash["routes"][0]["legs"][0]["start_address"]
   end_addy = directions_hash["routes"][0]["legs"][0]["end_address"]
   directions = []
+#why did you not you Nokogiri. it looks like you parse it yourself.
   directions_hash["routes"][0]["legs"][0]["steps"].each do |step|
     # doc = Nokogiri::HTML(step["html_instructions"])
     # (doc.at_css "div").content = " #{(doc.at_css "div").content}"
@@ -131,5 +132,3 @@ def shop_select
 end
 
 everything
-
-

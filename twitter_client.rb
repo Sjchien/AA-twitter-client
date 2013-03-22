@@ -1,3 +1,5 @@
+#good job guys - Code was very clean
+
 require 'launchy'
 require 'oauth'
 require 'yaml'
@@ -47,6 +49,7 @@ class EndUser < User
   def initialize(name)
     super(name)
     @friends = []
+#isn't friend supposed to be in the user class
     get_friends
   end
 
