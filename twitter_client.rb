@@ -2,6 +2,7 @@ require 'launchy'
 require 'oauth'
 require 'yaml'
 require 'json'
+require 'addressable/uri'
 
 CONSUMER_KEY = "zbWG8fqN1BLieFrHPPYg"
 CONSUMER_SECRET = "zRieLDh6VBpiHf7gieJrlrHw67EE2QSZg9795RC50"
@@ -116,8 +117,16 @@ class EndUser < User
   end
 
   def dm(target_user, message)
-    #sends a dm to this user
-
+    a = Addressable::URI.new(
+       :scheme => "https",
+       :host => "maps.googleapis.com",
+       :path => "/maps/api/directions/json",
+       :query_values => { :origin => from,
+                          :destination => to,
+                          :sensor => "false",
+                          :mode => "walking" }
+    )
+    dm = @@access_token.post("http://api.twitter.com/1.1/statuses/update.json", {"text" => message, "screen_name"  => target_user}).body
   end
 
   def get_friends ##rename?
@@ -166,6 +175,7 @@ def main
     when 2
       puts current_user.timeline
     when 3
+      current_user.dm(current_user.pick_friend_to_view.name, current_user.get_tweet)
     when 4
       current_user.show_friend_statuses(current_user.pick_friend_to_view)
     when 5
