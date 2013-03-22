@@ -3,19 +3,24 @@ require 'oauth'
 require 'yaml'
 require 'json'
 
+CONSUMER_KEY = "zbWG8fqN1BLieFrHPPYg"
+CONSUMER_SECRET = "zRieLDh6VBpiHf7gieJrlrHw67EE2QSZg9795RC50"
+
+CONSUMER = OAuth::Consumer.new(
+  CONSUMER_KEY, CONSUMER_SECRET, :site => "https://twitter.com")
+
 
 
 class Status
-  attr_accessor :user
+  attr_reader :user, :tweet
 
   def initialize(user, tweet)
     @user = user
     @tweet = tweet
-    post_status(@tweet)
   end
 
-  def post_status(tweet)
-    a = user.access_token.post("http://api.twitter.com/1.1/statuses/update.json", {"status" => tweet}).body
+  def post_status
+    a = user.access_token.post("http://api.twitter.com/1.1/statuses/update.json", {"status" => @tweet}).body
 
     puts "#{a}"
   end
@@ -23,25 +28,65 @@ class Status
 end
 
 class User
+  attr_accessor :statuses, :name
 
+  def initialize(name = "default")
+    @name = name
+    @statuses = []
+  end
+
+  def get_statuses
+    response = EndUser.access_token.get("http://api.twitter.com/1.1/statuses/user_timeline.json?screen_name=#{name}").body
+    user_timeline = JSON.parse(response)
+    user_timeline.each do |tweet|
+      @statuses << Status.new(self, tweet["text"])
+    end
+    @statuses
+  end
 end
 
 class EndUser < User
   # "consumer" in OAuth terminology means "client" in our discussion.
-  CONSUMER_KEY = "zbWG8fqN1BLieFrHPPYg"
-  CONSUMER_SECRET = "zRieLDh6VBpiHf7gieJrlrHw67EE2QSZg9795RC50"
 
-  CONSUMER = OAuth::Consumer.new(
-    CONSUMER_KEY, CONSUMER_SECRET, :site => "https://twitter.com")
-
-  attr_accessor :statuses
-
-  def initialize(name = "default")
-    @name = name
-    @@access_token = get_token("#{@name}.txt")
-    @@access_token = request_access_token if @@access_token.nil?
-    @statuses = []
+  def initialize(name)
+    super(name)
+    @friends = []
+    get_friends
   end
+
+  def self.login(name)
+    @@access_token = EndUser.get_token("#{name}.txt")
+    @@current_user = EndUser.new(name)
+  end
+
+  def self.access_token
+    @@access_token
+  end
+
+  def self.request_token
+    request_token = CONSUMER.get_request_token
+    authorize_url = EndUser.request_token.authorize_url
+    puts "Go to this URL: #{authorize_url}"
+    Launchy.open(authorize_url)
+
+    puts "Login, and type your verification code in"
+    oauth_verifier = gets.chomp
+
+    access_token = request_token.get_access_token(
+        :oauth_verifier => oauth_verifier)
+  end
+
+  def self.get_token(token_file)
+    if File.exist?(token_file)
+      File.open(token_file) { |f| YAML.load(f) }
+    else
+      access_token = request_token
+      File.open(token_file, "w") { |f| YAML.dump(access_token, f) }
+
+      access_token
+    end
+  end
+
 
   def timeline
     tweets = []
@@ -59,84 +104,75 @@ class EndUser < User
 
   def tweet(message)
     status = Status.new(self, message)
+    status.post_status
 
     p status ###
 
     @statuses << status
   end
 
-  def access_token
-    @@access_token
-  end
-
-  # ask the user to authorize the application
-  def request_access_token
-    # send user to twitter URL to authorize application
-    request_token = CONSUMER.get_request_token
-    authorize_url = request_token.authorize_url
-    puts "Go to this URL: #{authorize_url}"
-    # launchy is a gem that opens a browser tab for us
-    Launchy.open(authorize_url)
-
-    # because we don't use a redirect URL; user will receive an "out of
-    # band" verification code that the application may exchange for a
-    # key; ask user to give it to us
-    puts "Login, and type your verification code in"
-    oauth_verifier = gets.chomp
-
-    # ask the oauth library to give us an access token, which will allow
-    # us to make requests on behalf of this user
-    access_token = request_token.get_access_token(
-        :oauth_verifier => oauth_verifier)
-  end
-
-  # fetch a user's timeline
   def user_timeline
-    # the access token class has methods `get` and `post` to make
-    # requests in the same way as RestClient, except that these will be
-    # authorized. The token takes care of the crypto for us :-)
-      @@access_token.get("http://api.twitter.com/1.1/statuses/user_timeline.json").body
+    @@access_token.get("http://api.twitter.com/1.1/statuses/user_timeline.json").body
   end
 
-  def get_token(token_file)
-    # We can serialize token to a file, so that future requests don't need
-    # to be reauthorized.
-
-    if File.exist?(token_file)
-      File.open(token_file) { |f| YAML.load(f) }
-    else
-      access_token = request_access_token
-      File.open(token_file, "w") { |f| YAML.dump(access_token, f) }
-
-      access_token
-    end
-  end
-
-
-  def dm(message)
+  def dm(target_user, message)
     #sends a dm to this user
 
   end
 
-end
+  def get_friends ##rename?
+    response =  @@access_token.get("https://api.twitter.com/1.1/friends/list.json").body
+    friends_list = JSON.parse(response)
+    friends_list["users"].each do |friend|
+      @friends << User.new(friend["screen_name"])
+      @friends.last.get_statuses
+    end
+  end
 
+  def show_friends
+    puts "Your Tweet Friends"
+    @friends.each_with_index { |friend, i| puts "#{i+1} | #{friend.name}" }
+  end
+
+  def pick_friend_to_view
+    show_friends
+    puts "Pick a friend to view their tweets"
+    @friends[gets.chomp.to_i-1]
+  end
+
+  def show_friend_statuses(friend)
+    friend.statuses.each { |status| puts status.tweet }
+  end
+end
 
 def main
   puts "what shall we call you?"
   name = gets.chomp
-  user = EndUser.new(name)
-  puts "select an action: 1 - Tweet || 2 - View your Timeline || 3 - DM || 4 - exit"
-  action = gets.chomp.to_i
+  current_user = EndUser.login(name)
+  action = nil
 
-  case action
-  when 1
-    user.tweet(user.get_tweet)
-  when 2
-    puts user.timeline
-  when 3
+  while action != 0
+    puts "\n\n\n\n"
+    puts "Welcome to TwitterClient 1000.0, #{current_user.name}"
+    puts "-----------------------------------------------------"
+    puts
+    puts "select an action: 1 - Tweet || 2 - View your Timeline || 3 - DM"
+    puts "|| 4 - View other user's Timeline || 5 - View Users you are Following || 0 - Exit"
+    action = gets.chomp.to_i
 
-  else
-    puts "thanks for coming"
+    case action
+    when 1
+      current_user.tweet(current_user.get_tweet)
+    when 2
+      puts current_user.timeline
+    when 3
+    when 4
+      current_user.show_friend_statuses(current_user.pick_friend_to_view)
+    when 5
+      current_user.show_friends
+    else
+      puts "thanks for coming"
+    end
   end
 end
 
